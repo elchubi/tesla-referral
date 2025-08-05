@@ -5,6 +5,7 @@ import hashlib
 import shutil
 import tempfile
 import json
+from datetime import datetime
 
 GALERIA_URLS = [
     "https://digitalassets.tesla.com/tesla-contents/raw/upload/tesla-gallery-cybercab.zip",
@@ -20,6 +21,7 @@ GALERIA_URLS = [
 
 CACHE_FILE = "cache/hashes.json"
 ASSETS_DIR = "assets"
+GALERIA_JSON = os.path.join(ASSETS_DIR, "galeria.json")
 
 def sha256sum(filepath):
     h = hashlib.sha256()
@@ -39,7 +41,18 @@ def save_cache(data):
     with open(CACHE_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-def descargar_y_procesar_zip(url, cache):
+def load_galeria():
+    if os.path.exists(GALERIA_JSON):
+        with open(GALERIA_JSON, "r") as f:
+            return json.load(f)
+    return []
+
+def save_galeria(entries):
+    os.makedirs(ASSETS_DIR, exist_ok=True)
+    with open(GALERIA_JSON, "w") as f:
+        json.dump(entries, f, indent=2)
+
+def descargar_y_procesar_zip(url, cache, galeria_entries):
     print(f"⬇️  Descargando: {url}")
     with tempfile.TemporaryDirectory() as tempdir:
         local_zip = os.path.join(tempdir, "galeria.zip")
@@ -64,21 +77,33 @@ def descargar_y_procesar_zip(url, cache):
                 if file_hash not in cache:
                     print(f"🆕 Nueva imagen: {name}")
                     os.makedirs(ASSETS_DIR, exist_ok=True)
-                    shutil.copy2(full_path, os.path.join(ASSETS_DIR, name))
+                    destino = os.path.join(ASSETS_DIR, name)
+                    shutil.copy2(full_path, destino)
                     cache[file_hash] = name
+                    galeria_entries.append({
+                        "filename": name,
+                        "hash": file_hash,
+                        "fecha_adicion": datetime.utcnow().isoformat(),
+                        "origen_zip": os.path.basename(url)
+                    })
                     nuevas += 1
 
-        print(f"✅ {nuevas} imágenes nuevas encontradas y copiadas.\n")
+        print(f"✅ {nuevas} imágenes nuevas copiadas desde {os.path.basename(url)}.\n")
 
 def main():
     cache = load_cache()
+    galeria = load_galeria()
+
     for url in GALERIA_URLS:
         try:
-            descargar_y_procesar_zip(url, cache)
+            descargar_y_procesar_zip(url, cache, galeria)
         except Exception as e:
             print(f"❌ Error procesando {url}: {e}")
+
     save_cache(cache)
-    print("🗂️  Actualización de galería finalizada.")
+    save_galeria(galeria)
+    print(f"🗂️  Galería JSON generada con {len(galeria)} imágenes.")
+    print("🏁 Proceso finalizado.")
 
 if __name__ == "__main__":
     main()
