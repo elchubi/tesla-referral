@@ -1,74 +1,39 @@
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
-import requests
 import os
-import re
+import requests
+from bs4 import BeautifulSoup
+from zipfile import ZipFile
+from io import BytesIO
 
-URLS = {
-    "model3": "https://www.tesla.com/model3",
-    "modely": "https://www.tesla.com/modely",
-    "models": "https://www.tesla.com/models",
-    "modelx": "https://www.tesla.com/modelx",
-    "cybertruck": "https://www.tesla.com/cybertruck",
-}
-
+TESLA_GALLERY_URL = "https://www.tesla.com/es_MX/tesla-gallery"
 OUTPUT_DIR = "assets"
+
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def extraer_urls_con_hero(tag, attrs=["src", "srcset", "data-iesrc"]):
-    urls = set()
-    for attr in attrs:
-        val = tag.get(attr)
-        if not val:
-            continue
-        # Soporte para srcset con múltiples URLs separadas por coma
-        parts = re.split(r",\s*", val)
-        for part in parts:
-            match = re.search(r"(https?://[^\s]+)", part)
-            if match and "hero" in match.group(1).lower():
-                clean_url = match.group(1).split()[0]
-                urls.add(clean_url)
-    return urls
+print(f"Accediendo a {TESLA_GALLERY_URL}")
+resp = requests.get(TESLA_GALLERY_URL)
+resp.raise_for_status()
 
-def descargar_imagen(url, filename):
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        path = os.path.join(OUTPUT_DIR, filename)
-        with open(path, "wb") as f:
-            f.write(resp.content)
-        print(f"✅ Guardada: {filename}")
-    except Exception as e:
-        print(f"❌ Error descargando {url}: {e}")
+soup = BeautifulSoup(resp.text, "html.parser")
+links = soup.find_all("a", href=True)
 
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    page = browser.new_page()
+zip_links = [link['href'] for link in links if link['href'].lower().endswith(".zip")]
 
-    for modelo, url in URLS.items():
-        print(f"\n🌐 Accediendo a {url}")
-        try:
-            page.goto(url, timeout=60000)
-            page.wait_for_timeout(7000)  # Esperar carga dinámica
-            html = page.content()
-            soup = BeautifulSoup(html, "html.parser")
+if not zip_links:
+    print("⚠️ No se encontraron archivos .zip")
+else:
+    for zip_url in zip_links:
+        full_url = zip_url if zip_url.startswith("http") else f"https://www.tesla.com{zip_url}"
+        filename = os.path.basename(full_url)
+        folder_name = filename.replace(".zip", "").lower().replace("-", "_")
 
-            all_urls = set()
-            for tag in soup.find_all(["img", "source", "picture"]):
-                all_urls.update(extraer_urls_con_hero(tag))
+        print(f"⬇️ Descargando {filename}...")
+        zip_resp = requests.get(full_url)
+        zip_resp.raise_for_status()
 
-            if not all_urls:
-                print("⚠️  No se encontraron imágenes con 'hero'")
-                continue
+        model_dir = os.path.join(OUTPUT_DIR, folder_name)
+        os.makedirs(model_dir, exist_ok=True)
 
-            for i, img_url in enumerate(sorted(all_urls)):
-                ext = os.path.splitext(img_url)[1].split("?")[0]
-                if not ext:
-                    ext = ".png"
-                filename = f"{modelo}-{i+1}{ext}"
-                descargar_imagen(img_url, filename)
+        with ZipFile(BytesIO(zip_resp.content)) as zip_file:
+            zip_file.extractall(model_dir)
 
-        except Exception as e:
-            print(f"❌ Error: {e}")
-
-    browser.close()
+        print(f"✅ Extraído en: {model_dir}")
