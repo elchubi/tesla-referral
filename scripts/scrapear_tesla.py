@@ -1,51 +1,63 @@
 import os
+import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-MODELOS = {
-    "model3": "https://www.tesla.com/model3",
-    "modely": "https://www.tesla.com/modely",
-    "models": "https://www.tesla.com/models",
-    "modelx": "https://www.tesla.com/modelx",
-    "cybertruck": "https://www.tesla.com/cybertruck"
-}
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/115 Safari/537.36"
-}
-
+# Config
+BASE_URL = "https://www.tesla.com"
+MODEL_PATHS = ["/model3", "/modely", "/modelx", "/models", "/cybertruck"]
 OUTPUT_DIR = "assets"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def descargar_imagen(url, nombre):
+# Regex para detectar "hero" en el nombre (sin importar posición o mayúsculas)
+HERO_PATTERN = re.compile(r".*hero.*\.(jpg|jpeg|png|webp|avif)", re.IGNORECASE)
+
+# Función para obtener imágenes de una página
+def extraer_imagenes_de_modelo(path):
+    url = urljoin(BASE_URL, path)
+    print(f"Accediendo a {url}...")
+    
     try:
-        r = requests.get(url, headers=HEADERS)
-        if r.status_code == 200:
-            path = os.path.join(OUTPUT_DIR, nombre)
-            with open(path, "wb") as f:
-                f.write(r.content)
-            print(f"📥 Descargada: {nombre}")
-        else:
-            print(f"⚠️ Error descargando {url} - Código {r.status_code}")
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
     except Exception as e:
-        print(f"❌ Excepción descargando imagen: {e}")
+        print(f"Error al obtener {url}: {e}")
+        return
 
-for modelo, url in MODELOS.items():
-    print(f"🔎 Scrapeando {modelo}...")
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(r.text, "html.parser")
+    soup = BeautifulSoup(res.text, "html.parser")
+    tags = soup.find_all(["img", "source"])
 
-        for img in soup.find_all("img"):
-            src = img.get("src") or img.get("data-src") or img.get("srcset")
-            if not src:
-                continue
+    for tag in tags:
+        src = tag.get("src") or tag.get("srcset")
+        if not src:
+            continue
 
-            if "hero" in src.lower() and not src.startswith("data:"):
-                full_url = urljoin(url, src)
-                ext = full_url.split(".")[-1].split("?")[0]
-                nombre_archivo = f"{modelo}-" + full_url.split("/")[-1].split("?")[0]
-                descargar_imagen(full_url, nombre_archivo)
-    except Exception as e:
-        print(f"❌ Error con {modelo}: {e}")
+        if not HERO_PATTERN.search(src):
+            continue
+
+        # Construir URL absoluta si es necesario
+        if src.startswith("/"):
+            src = urljoin(BASE_URL, src)
+        elif src.startswith("//"):
+            src = "https:" + src
+
+        filename = os.path.basename(src.split("?")[0])
+        output_path = os.path.join(OUTPUT_DIR, filename)
+
+        if os.path.exists(output_path):
+            print(f"Ya descargada: {filename}")
+            continue
+
+        print(f"Descargando: {filename}...")
+        try:
+            img_data = requests.get(src, timeout=15).content
+            with open(output_path, "wb") as f:
+                f.write(img_data)
+        except Exception as e:
+            print(f"Error al descargar {src}: {e}")
+
+# === MAIN ===
+if __name__ == "__main__":
+    for path in MODEL_PATHS:
+        extraer_imagenes_de_modelo(path)
