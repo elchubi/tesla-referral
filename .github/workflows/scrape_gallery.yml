@@ -1,32 +1,51 @@
-name: Descargar imágenes Tesla oficiales
+name: Ejecutar descarga con Selenium
 
 on:
-  schedule:
-    - cron: '0 0 1 * *'  # Ejecutar el día 1 de cada mes a las 00:00 UTC
   workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/descargar_galeria.py'
 
 jobs:
-  scrape_gallery:
+  descargar-imagenes:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repositorio
-        uses: actions/checkout@v4
 
-      - name: Configurar Python
-        uses: actions/setup-python@v5
+    steps:
+      - name: 🧾 Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Instalar dependencias
-        run: pip install beautifulsoup4 requests selenium
-
-      - name: Ejecutar descarga desde galería oficial
-        run: python scripts/descargar_galeria.py
-
-      - name: Commit imágenes nuevas
+      - name: 📦 Instalar dependencias
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add assets
-          git commit -m "📸 Nuevas imágenes descargadas desde galería oficial de Tesla" || echo "Sin cambios"
-          git push
+          sudo apt-get update
+          sudo apt-get install -y wget unzip xvfb libxi6 libgconf-2-4 libnss3 libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxss1
+          pip install selenium beautifulsoup4 requests
+
+      - name: 🌐 Instalar Chrome y ChromeDriver
+        run: |
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install ./google-chrome-stable_current_amd64.deb -y
+          
+          CHROME_VERSION=$(google-chrome --version | grep -oP '[0-9]+' | head -1)
+          DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
+          wget -N "https://chromedriver.storage.googleapis.com/$DRIVER_VERSION/chromedriver_linux64.zip"
+          unzip chromedriver_linux64.zip
+          chmod +x chromedriver
+          sudo mv -f chromedriver /usr/local/bin/chromedriver
+
+      - name: ✅ Ejecutar script
+        env:
+          DISPLAY: ":99"
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          python scripts/descargar_galeria.py
+
+      - name: 📤 Subir imágenes como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagenes-tesla
+          path: output/
