@@ -11,16 +11,14 @@ INPUT_FOLDER = "assets"
 OUTPUT_FOLDER = "assets-editados"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-def convertir_a_png(input_path):
-    name, _ = os.path.splitext(os.path.basename(input_path))
-    output_path = os.path.join(OUTPUT_FOLDER, f"{name}-converted.png")
+def convertir_avif_a_png(input_path, output_path):
     try:
         with Image.open(input_path) as img:
             img.save(output_path, "PNG")
-        return output_path
+        return True
     except Exception as e:
-        print(f"Error al convertir {input_path} a PNG: {e}")
-        return None
+        print(f"Error al convertir AVIF: {e}")
+        return False
 
 def quitar_fondo(input_path, output_path):
     with open(input_path, "rb") as image_file:
@@ -38,8 +36,8 @@ def quitar_fondo(input_path, output_path):
         print(f"Remove.bg error: {response.status_code} - {response.text}")
         return False
 
-def upscale_imagen(input_path, output_path):
-    with open(input_path, "rb") as f:
+def ejecutar_replicate(image_path, version):
+    with open(image_path, "rb") as f:
         b64_img = base64.b64encode(f.read()).decode("utf-8")
 
     headers = {
@@ -47,7 +45,7 @@ def upscale_imagen(input_path, output_path):
         "Content-Type": "application/json"
     }
     data = {
-        "version": "fbb9ac7c439feeb5c779e3f6c6ab527968d5baf2e25c18a58519c0c1792560a3",
+        "version": version,
         "input": {
             "image": f"data:image/png;base64,{b64_img}"
         }
@@ -55,94 +53,79 @@ def upscale_imagen(input_path, output_path):
 
     response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=data)
     if response.status_code != 201:
-        print(f"Replicate upscale error: {response.status_code} - {response.text}")
-        return False
+        print(f"Replicate error: {response.status_code} - {response.text}")
+        return None
 
-    prediction = response.json()
-    prediction_url = prediction["urls"]["get"]
+    prediction_url = response.json()["urls"]["get"]
 
-    for _ in range(10):
+    # Poll hasta que termine
+    for _ in range(20):
         poll = requests.get(prediction_url, headers=headers)
         result = poll.json()
         if result["status"] == "succeeded":
-            image_url = result["output"]
-            img_data = requests.get(image_url).content
-            with open(output_path, "wb") as f:
-                f.write(img_data)
-            return True
+            return result["output"]
         elif result["status"] == "failed":
-            print("Upscale falló.")
-            return False
-        time.sleep(5)
+            print("Replicate falló.")
+            return None
+        time.sleep(3)
 
-    print("Upscale timeout.")
-    return False
+    print("Replicate se tardó demasiado.")
+    return None
 
-def arte_digital(input_path, output_path):
-    with open(input_path, "rb") as f:
-        b64_img = base64.b64encode(f.read()).decode("utf-8")
-
-    headers = {
-        "Authorization": f"Token {REPLICATE_API_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "version": "6a9f6d70a6c5a1e6917a19d3fe42b15d2b52f239154a3fc49ccde0d70c2cfc3c",
-        "input": {
-            "image": f"data:image/png;base64,{b64_img}",
-            "prompt": "professional digital portrait, clean lighting, sharp focus"
-        }
-    }
-
-    response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=data)
-    if response.status_code != 201:
-        print(f"Replicate arte error: {response.status_code} - {response.text}")
-        return False
-
-    prediction = response.json()
-    prediction_url = prediction["urls"]["get"]
-
-    for _ in range(12):
-        poll = requests.get(prediction_url, headers=headers)
-        result = poll.json()
-        if result["status"] == "succeeded":
-            image_url = result["output"]
-            img_data = requests.get(image_url).content
-            with open(output_path, "wb") as f:
-                f.write(img_data)
-            return True
-        elif result["status"] == "failed":
-            print("Arte falló.")
-            return False
-        time.sleep(5)
-
-    print("Arte timeout.")
-    return False
+def descargar_imagen(url, output_path):
+    img_data = requests.get(url).content
+    with open(output_path, "wb") as f:
+        f.write(img_data)
 
 for filename in os.listdir(INPUT_FOLDER):
     name, ext = os.path.splitext(filename)
     ext = ext.lower()
-    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".avif"]:
+    if ext not in [".jpg", ".jpeg", ".png", ".avif"]:
         continue
 
-    raw_path = os.path.join(INPUT_FOLDER, filename)
-    converted_path = raw_path
+    input_path = os.path.join(INPUT_FOLDER, filename)
 
-    if ext in [".webp", ".avif"]:
-        converted_path = convertir_a_png(raw_path)
-        if not converted_path:
+    # 1. Convertir AVIF a PNG si aplica
+    if ext == ".avif":
+        converted_path = os.path.join(OUTPUT_FOLDER, f"{name}-converted.png")
+        if convertir_avif_a_png(input_path, converted_path):
+            input_path = converted_path
+        else:
             continue
 
-    temp_nobg = os.path.join(OUTPUT_FOLDER, f"{name}-nobg.png")
-    temp_upscaled = os.path.join(OUTPUT_FOLDER, f"{name}-upscaled.png")
-    temp_artistic = os.path.join(OUTPUT_FOLDER, f"{name}-artistic.png")
+    temp_nobg_path = os.path.join(OUTPUT_FOLDER, f"{name}-nobg.png")
+    upscale_path = os.path.join(OUTPUT_FOLDER, f"{name}-upscaled.png")
+    portrait_path = os.path.join(OUTPUT_FOLDER, f"{name}-portrait.png")
 
-    if os.path.exists(temp_artistic):
-        print(f"{temp_artistic} ya existe, se omite.")
+    if os.path.exists(portrait_path):
+        print(f"Ya procesada: {portrait_path}")
         continue
 
-    print(f"Procesando: {filename}")
+    print(f"Procesando {filename}...")
 
-    if quitar_fondo(converted_path, temp_nobg):
-        if upscale_imagen(temp_nobg, temp_upscaled):
-            arte_digital(temp_upscaled, temp_artistic)
+    # 2. Quitar fondo
+    if not os.path.exists(temp_nobg_path):
+        if not quitar_fondo(input_path, temp_nobg_path):
+            continue
+
+    # 3. Upscale
+    if not os.path.exists(upscale_path):
+        output_url = ejecutar_replicate(
+            temp_nobg_path,
+            version="6a9f6d70a6c5a1e6917a19d3fe42b15d2b52f239154a3fc49ccde0d70c2cfc3c"  # Real-ESRGAN
+        )
+        if not output_url:
+            continue
+        descargar_imagen(output_url, upscale_path)
+
+    # 4. Estilo artístico tipo retrato
+    if not os.path.exists(portrait_path):
+        output_url = ejecutar_replicate(
+            upscale_path,
+            version="2a1e7618e50fa826f63e07fa9fe4081337645b358fcf10ef83510f0cd38af50b"  # portrait-v1.0.1
+        )
+        if not output_url:
+            continue
+        descargar_imagen(output_url, portrait_path)
+
+    print(f"✓ Imagen final guardada: {portrait_path}")
