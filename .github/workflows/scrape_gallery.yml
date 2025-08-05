@@ -8,7 +8,7 @@ on:
 
 jobs:
   descargar-imagenes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: 🧾 Clonar repositorio
