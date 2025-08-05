@@ -19,36 +19,42 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 📦 Instalar dependencias
+      - name: 📦 Instalar dependencias del sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip xvfb libxi6 libgconf-2-4 libnss3 libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxss1
+          sudo apt-get install -y wget unzip xvfb curl gnupg2 \
+            libxi6 libnss3 libxss1 libgconf-2-4 libasound2 libatk1.0-0 \
+            libatk-bridge2.0-0 libcups2
+
+      - name: 🌐 Instalar Chrome y ChromeDriver
+        run: |
+          # Instalar Chrome
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install ./google-chrome-stable_current_amd64.deb -y
+
+          # Obtener versión de Chrome
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+
+          # Intentar obtener versión exacta de ChromeDriver
+          DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION" || true)
+
+          # Fallback a versión mayor
+          if [ -z "$DRIVER_VERSION" ]; then
+            CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d. -f1)
+            DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR")
+          fi
+
+          echo "Chrome: $CHROME_VERSION"
+          echo "ChromeDriver: $DRIVER_VERSION"
+
+          wget "https://chromedriver.storage.googleapis.com/$DRIVER_VERSION/chromedriver_linux64.zip"
+          unzip chromedriver_linux64.zip
+          chmod +x chromedriver
+          sudo mv chromedriver /usr/local/bin/chromedriver
+
+      - name: 🧪 Instalar dependencias Python
+        run: |
           pip install selenium beautifulsoup4 requests
-          
-- name: 🌐 Instalar Chrome y ChromeDriver
-  run: |
-    wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-    sudo apt install ./google-chrome-stable_current_amd64.deb -y
-
-    # Obtener versión exacta de Chrome
-    CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-    
-    # Obtener versión compatible de ChromeDriver
-    DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION" || true)
-    
-    # Fallback a versión mayor si la exacta no existe
-    if [ -z "$DRIVER_VERSION" ]; then
-      CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d. -f1)
-      DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR")
-    fi
-
-    echo "🔧 Chrome version: $CHROME_VERSION"
-    echo "📦 ChromeDriver version: $DRIVER_VERSION"
-
-    wget "https://chromedriver.storage.googleapis.com/$DRIVER_VERSION/chromedriver_linux64.zip"
-    unzip chromedriver_linux64.zip
-    chmod +x chromedriver
-    sudo mv chromedriver /usr/local/bin/chromedriver
 
       - name: ✅ Ejecutar script
         env:
