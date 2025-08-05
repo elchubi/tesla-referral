@@ -1,23 +1,26 @@
-name: Scrapear imágenes Tesla
+name: Scraping Tesla Mensual
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 4 1 * *'  # El día 1 de cada mes a las 4:00 UTC
+    - cron: '0 0 1 * *'  # Ejecutar el día 1 de cada mes a las 00:00 UTC
+  workflow_dispatch:     # Permite ejecución manual
 
 jobs:
-  scrap:
+  scrape:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
 
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install beautifulsoup4 requests
+        run: |
+          pip install requests-html
 
       - name: Ejecutar scraping
         run: python scripts/scrapear_tesla.py
@@ -26,6 +29,6 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add assets/*
-          git commit -m "📸 Nuevas imágenes desde Tesla.com" || echo "Sin cambios"
+          git add assets
+          git commit -m "📸 Nuevas imágenes Tesla descargadas automáticamente" || echo "Sin cambios"
           git push
