@@ -20,7 +20,8 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install requests-html lxml_html_clean
+          pip install playwright beautifulsoup4 requests
+          python -m playwright install --with-deps
 
       - name: Ejecutar scraping
         run: python scripts/scrapear_tesla.py
