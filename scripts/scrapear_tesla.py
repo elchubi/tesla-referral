@@ -1,63 +1,65 @@
 import os
-import re
+import time
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from pathlib import Path
 
-# Config
-BASE_URL = "https://www.tesla.com"
-MODEL_PATHS = ["/model3", "/modely", "/modelx", "/models", "/cybertruck"]
-OUTPUT_DIR = "assets"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+BASE_URLS = [
+    "https://www.tesla.com/model3",
+    "https://www.tesla.com/modely",
+    "https://www.tesla.com/modelx",
+    "https://www.tesla.com/models",
+    "https://www.tesla.com/cybertruck"
+]
 
-# Regex para detectar "hero" en el nombre (sin importar posición o mayúsculas)
-HERO_PATTERN = re.compile(r".*hero.*\.(jpg|jpeg|png|webp|avif)", re.IGNORECASE)
+OUTPUT_FOLDER = "assets"
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# Función para obtener imágenes de una página
-def extraer_imagenes_de_modelo(path):
-    url = urljoin(BASE_URL, path)
-    print(f"Accediendo a {url}...")
-    
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9"
+}
+
+def es_url_valida(url):
+    ext = url.split("?")[0].split(".")[-1].lower()
+    return ext in ["jpg", "jpeg", "png", "webp", "avif"]
+
+def contiene_hero(url):
+    return "hero" in url.lower()
+
+def descargar_imagen(url, nombre):
     try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        ruta = os.path.join(OUTPUT_FOLDER, nombre)
+        with open(ruta, "wb") as f:
+            f.write(response.content)
+        print(f"✅ Guardada: {ruta}")
     except Exception as e:
-        print(f"Error al obtener {url}: {e}")
-        return
+        print(f"❌ Error al descargar {url}: {e}")
 
-    soup = BeautifulSoup(res.text, "html.parser")
-    tags = soup.find_all(["img", "source"])
+def procesar_pagina(url_base):
+    print(f"\n🌐 Accediendo a {url_base}")
+    try:
+        response = requests.get(url_base, headers=HEADERS)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        imgs = soup.find_all("img")
 
-    for tag in tags:
-        src = tag.get("src") or tag.get("srcset")
-        if not src:
-            continue
+        for img in imgs:
+            src = img.get("src")
+            if not src:
+                continue
 
-        if not HERO_PATTERN.search(src):
-            continue
+            src_abs = urljoin(url_base, src)
+            if contiene_hero(src_abs) and es_url_valida(src_abs):
+                nombre = Path(src_abs).name.split("?")[0]
+                descargar_imagen(src_abs, nombre)
+        time.sleep(2)  # Espera para evitar ser bloqueado
+    except Exception as e:
+        print(f"❌ Error al obtener {url_base}: {e}")
 
-        # Construir URL absoluta si es necesario
-        if src.startswith("/"):
-            src = urljoin(BASE_URL, src)
-        elif src.startswith("//"):
-            src = "https:" + src
-
-        filename = os.path.basename(src.split("?")[0])
-        output_path = os.path.join(OUTPUT_DIR, filename)
-
-        if os.path.exists(output_path):
-            print(f"Ya descargada: {filename}")
-            continue
-
-        print(f"Descargando: {filename}...")
-        try:
-            img_data = requests.get(src, timeout=15).content
-            with open(output_path, "wb") as f:
-                f.write(img_data)
-        except Exception as e:
-            print(f"Error al descargar {src}: {e}")
-
-# === MAIN ===
-if __name__ == "__main__":
-    for path in MODEL_PATHS:
-        extraer_imagenes_de_modelo(path)
+# === Ejecutar ===
+for url in BASE_URLS:
+    procesar_pagina(url)
