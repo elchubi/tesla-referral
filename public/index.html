@@ -1,17 +1,42 @@
-<!DOCTYPE html>
-<html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tesla Referral</title>
-    <link href="/output.css" rel="stylesheet" />
-  </head>
-  <body class="bg-gray-100 text-center p-10">
-    <h1 class="text-4xl font-bold text-red-600">¡Usa mi código de referido Tesla!</h1>
-    <p class="mt-4 text-lg">Benefíciate tú y yo con recompensas exclusivas.</p>
-    <a href="https://ts.la/davidanton806840" class="mt-6 inline-block bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600">
-      Ir al sitio de Tesla
-    </a>
-  </body>
-</html>
+import { useEffect, useState } from 'react';
 
+const images = [
+  '/assets/tesla1.jpg',
+  '/assets/tesla2.jpg',
+  '/assets/tesla3.jpg',
+  '/assets/tesla4.jpg',
+  // Agrega aquí más imágenes si existen en assets
+];
+
+export default function Home() {
+  const [image, setImage] = useState(images[0]);
+
+  useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * images.length);
+    setImage(images[randomIndex]);
+  }, []);
+
+  return (
+    <main className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-center px-4">
+      <div className="max-w-4xl w-full bg-white shadow-2xl rounded-2xl overflow-hidden">
+        <img src={image} alt="Tesla" className="w-full h-80 object-cover" />
+        <div className="p-8">
+          <h1 className="text-4xl font-bold text-red-600 mb-4">
+            ¡Usa mi código de referido Tesla!
+          </h1>
+          <p className="text-lg text-gray-700 mb-6">
+            Benefíciate tú y yo con recompensas exclusivas al ordenar tu nuevo Tesla.
+          </p>
+          <a
+            href="https://ts.la/davidanton806840"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block px-8 py-4 bg-red-500 hover:bg-red-600 text-white font-semibold text-lg rounded-full shadow-md transition-all duration-300"
+          >
+            Ir al sitio de Tesla
+          </a>
+        </div>
+      </div>
+    </main>
+  );
+}
