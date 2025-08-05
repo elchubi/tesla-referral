@@ -1,131 +1,72 @@
 import os
-import base64
 import time
 import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
-url = "https://www.tesla.com/es_MX/tesla-gallery"
-
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
-    "Referer": "https://www.tesla.com/",
-    "Connection": "keep-alive",
+# URL de la galería oficial de Tesla
+GALERIA_URL = "https://www.tesla.com/es_MX/tesla-gallery"
+OUTPUT_DIR = "output"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 }
 
-print(f"Accediendo a {url}")
-resp = requests.get(url, headers=headers)
-resp.raise_for_status()
+def iniciar_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Quitar esto si deseas ver el navegador
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--window-size=1920x1080")
+    chrome_options.add_argument(f"user-agent={HEADERS['User-Agent']}")
+    return webdriver.Chrome(options=chrome_options)
 
+def extraer_urls_imagenes(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    imgs = soup.find_all("img")
+    urls = []
 
-from PIL import Image
+    for img in imgs:
+        src = img.get("src")
+        if src and (".jpg" in src or ".png" in src):
+            full_url = urljoin(base_url, src)
+            urls.append(full_url)
+    
+    return list(set(urls))  # eliminar duplicados
 
-# === Configuración ===
-REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY")
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
+def descargar_imagen(url):
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    nombre_archivo = url.split("/")[-1]
+    ruta = os.path.join(OUTPUT_DIR, nombre_archivo)
 
-INPUT_FOLDER = "assets"
-OUTPUT_FOLDER = "assets-editados"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-
-# === Funciones ===
-
-def convertir_avif_a_png(input_path, output_path):
+    print(f"⬇️  {url}")
     try:
-        with Image.open(input_path) as im:
-            im.save(output_path, "PNG")
-        print(f"Convertido AVIF a PNG: {output_path}")
-        return True
+        resp = requests.get(url, headers=HEADERS)
+        resp.raise_for_status()
+        with open(ruta, "wb") as f:
+            f.write(resp.content)
+        print(f"✅ Guardado como {ruta}")
     except Exception as e:
-        print(f"Error convirtiendo AVIF: {e}")
-        return False
+        print(f"❌ Error al descargar {url}: {e}")
 
-def quitar_fondo(input_path, output_path):
-    with open(input_path, "rb") as image_file:
-        response = requests.post(
-            "https://api.remove.bg/v1.0/removebg",
-            files={"image_file": image_file},
-            data={"size": "auto"},
-            headers={"X-Api-Key": REMOVE_BG_API_KEY},
-        )
-    if response.status_code == 200:
-        with open(output_path, "wb") as out:
-            out.write(response.content)
-        print(f"Fondo eliminado: {output_path}")
-        return True
-    else:
-        print(f"Remove.bg error: {response.status_code} - {response.text}")
-        return False
+def main():
+    print(f"🌐 Accediendo a {GALERIA_URL}")
+    driver = iniciar_driver()
+    driver.get(GALERIA_URL)
+    time.sleep(5)  # Espera por carga de JS
 
-def esperar_resultado(prediction_url, headers):
-    for _ in range(10):
-        poll = requests.get(prediction_url, headers=headers)
-        result = poll.json()
-        if result["status"] == "succeeded":
-            return result["output"]
-        elif result["status"] == "failed":
-            print("Replicate: procesamiento fallido.")
-            return None
-        time.sleep(5)
-    print("Replicate: tiempo de espera agotado.")
-    return None
+    html = driver.page_source
+    driver.quit()
 
-def upscale_imagen(input_path, output_path):
-    with open(input_path, "rb") as f:
-        b64_img = base64.b64encode(f.read()).decode("utf-8")
+    print("🔍 Buscando imágenes...")
+    urls = extraer_urls_imagenes(html, GALERIA_URL)
 
-    headers = {
-        "Authorization": f"Token {REPLICATE_API_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    print(f"📸 Se encontraron {len(urls)} imágenes.")
+    for url in urls:
+        descargar_imagen(url)
 
-    data = {
-        "version": "f94d7ed4a1f7e1ffed0d51e4089e4911609d5eeee5e874ef323d2c7562624bed",  # Real-ESRGAN A100
-        "input": {
-            "image": f"data:image/png;base64,{b64_img}",
-            "face_enhance": True
-        }
-    }
+    print("🎉 Proceso completado.")
 
-    response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=data)
-    if response.status_code != 201:
-        print(f"Replicate upscale error: {response.status_code} - {response.text}")
-        return False
-
-    image_url = esperar_resultado(response.json()["urls"]["get"], headers)
-    if not image_url:
-        return False
-
-    img_data = requests.get(image_url).content
-    with open(output_path, "wb") as f:
-        f.write(img_data)
-    print(f"Imagen mejorada: {output_path}")
-    return True
-
-# === Proceso ===
-
-for filename in os.listdir(INPUT_FOLDER):
-    name, ext = os.path.splitext(filename)
-    ext = ext.lower()
-
-    if ext not in [".png", ".jpg", ".jpeg", ".avif"]:
-        continue
-
-    input_path = os.path.join(INPUT_FOLDER, filename)
-    converted_path = os.path.join(OUTPUT_FOLDER, f"{name}-converted.png") if ext == ".avif" else input_path
-    nobg_path = os.path.join(OUTPUT_FOLDER, f"{name}-nobg.png")
-    upscaled_path = os.path.join(OUTPUT_FOLDER, f"{name}-upscaled.png")
-
-    if os.path.exists(upscaled_path):
-        print(f"Ya procesada: {upscaled_path}")
-        continue
-
-    print(f"Procesando {filename}...")
-
-    if ext == ".avif" and not convertir_avif_a_png(input_path, converted_path):
-        continue
-
-    if not quitar_fondo(converted_path, nobg_path):
-        continue
-
-    upscale_imagen(nobg_path, upscaled_path)
+if __name__ == "__main__":
+    main()
