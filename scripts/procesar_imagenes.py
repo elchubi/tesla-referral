@@ -3,17 +3,20 @@ import base64
 import time
 import requests
 
+url = "https://www.tesla.com/es_MX/tesla-gallery"
+
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
-    "Referer": "https://www.tesla.com/"
+    "Referer": "https://www.tesla.com/",
+    "Connection": "keep-alive",
 }
 
-url = "https://www.tesla.com/es_MX/tesla-gallery"
+print(f"Accediendo a {url}")
 resp = requests.get(url, headers=headers)
 resp.raise_for_status()
 
-# Continúa con tu lógica...
 
 from PIL import Image
 
