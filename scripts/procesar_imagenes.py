@@ -96,7 +96,7 @@ def aplicar_arte_digital(input_path, output_path):
     }
 
     data = {
-        "version": "cf5d0e0b13c1623cecbba95b7eea55a22752e89de7b1cf08c65c568675c0112e",  # model estilo retrato (portrait)
+        "version": "d3380ed57abbd6e14446d90542cf014da3777243d144b8d6a9cb9f0e7be6b0c4",  # model estilo retrato (portrait)
         "input": {
             "image": f"data:image/png;base64,{b64_img}"
         }
