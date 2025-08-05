@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import os
 import requests
 
-# === Configuración ===
 URLS = {
     "model3": "https://www.tesla.com/model3",
     "modely": "https://www.tesla.com/modely",
@@ -17,10 +16,9 @@ URLS = {
 OUTPUT_DIR = "assets"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# === Función para guardar imagen ===
 def descargar_imagen(url, filename):
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         path = os.path.join(OUTPUT_DIR, filename)
         with open(path, "wb") as f:
@@ -29,7 +27,6 @@ def descargar_imagen(url, filename):
     except Exception as e:
         print(f"❌ Error descargando {url}: {e}")
 
-# === Proceso principal con Playwright ===
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
@@ -38,31 +35,28 @@ with sync_playwright() as p:
         print(f"\n🌐 Accediendo a {url}")
         try:
             page.goto(url, timeout=60000)
-            page.wait_for_timeout(5000)  # Esperar 5 segundos para carga completa
+            page.wait_for_timeout(7000)  # esperar carga de JS
+
             html = page.content()
             soup = BeautifulSoup(html, "html.parser")
 
-            imagenes = []
+            imagenes = set()
 
-            # Buscar <img src=...>
-            for img in soup.find_all("img"):
-                src = img.get("src", "")
-                if "hero" in src.lower():
-                    imagenes.append(src)
-
-            # Buscar <source srcset=...>
-            for source in soup.find_all("source"):
-                srcset = source.get("srcset", "")
-                for candidate in srcset.split(","):
-                    url_part = candidate.strip().split(" ")[0]
-                    if "hero" in url_part.lower():
-                        imagenes.append(url_part)
+            # Buscar en src, srcset y data-iesrc
+            for tag in soup.find_all(["img", "source", "picture"]):
+                for attr in ["src", "srcset", "data-iesrc"]:
+                    val = tag.get(attr)
+                    if val and "hero" in val.lower():
+                        for candidate in val.split(","):
+                            candidate_url = candidate.strip().split(" ")[0]
+                            if candidate_url.startswith("http") and "hero" in candidate_url.lower():
+                                imagenes.add(candidate_url)
 
             if not imagenes:
                 print("⚠️  No se encontraron imágenes con 'hero'")
                 continue
 
-            for i, img_url in enumerate(set(imagenes)):
+            for i, img_url in enumerate(imagenes):
                 ext = os.path.splitext(img_url)[1].split("?")[0] or ".png"
                 filename = f"{modelo}-{i+1}{ext}"
                 descargar_imagen(img_url, filename)
