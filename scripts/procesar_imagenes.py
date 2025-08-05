@@ -1,9 +1,10 @@
 import os
-import requests
 import base64
 import time
+import requests
 from PIL import Image
 
+# === Config ===
 REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY")
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 
@@ -11,13 +12,16 @@ INPUT_FOLDER = "assets"
 OUTPUT_FOLDER = "assets-editados"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
+# === Funciones ===
+
 def convertir_avif_a_png(input_path, output_path):
     try:
-        with Image.open(input_path) as img:
-            img.save(output_path, "PNG")
+        with Image.open(input_path) as im:
+            im.save(output_path, "PNG")
+        print(f"Convertido AVIF a PNG: {output_path}")
         return True
     except Exception as e:
-        print(f"Error al convertir AVIF: {e}")
+        print(f"Error convirtiendo AVIF: {e}")
         return False
 
 def quitar_fondo(input_path, output_path):
@@ -31,21 +35,68 @@ def quitar_fondo(input_path, output_path):
     if response.status_code == 200:
         with open(output_path, "wb") as out:
             out.write(response.content)
+        print(f"Fondo eliminado: {output_path}")
         return True
     else:
         print(f"Remove.bg error: {response.status_code} - {response.text}")
         return False
 
-def ejecutar_replicate(image_path, version):
-    with open(image_path, "rb") as f:
+def esperar_resultado(prediction_url, headers):
+    for _ in range(10):
+        poll = requests.get(prediction_url, headers=headers)
+        result = poll.json()
+        if result["status"] == "succeeded":
+            return result["output"]
+        elif result["status"] == "failed":
+            print("Replicate: procesamiento fallido.")
+            return None
+        time.sleep(5)
+    print("Replicate: tiempo de espera agotado.")
+    return None
+
+def upscale_imagen(input_path, output_path):
+    with open(input_path, "rb") as f:
         b64_img = base64.b64encode(f.read()).decode("utf-8")
 
     headers = {
         "Authorization": f"Token {REPLICATE_API_TOKEN}",
         "Content-Type": "application/json"
     }
+
     data = {
-        "version": version,
+        "version": "f94d7ed4a1f7e1ffed0d51e4089e4911609d5eeee5e874ef323d2c7562624bed",  # real-esrgan-a100
+        "input": {
+            "image": f"data:image/png;base64,{b64_img}",
+            "face_enhance": True
+        }
+    }
+
+    response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=data)
+    if response.status_code != 201:
+        print(f"Replicate upscale error: {response.status_code} - {response.text}")
+        return False
+
+    image_url = esperar_resultado(response.json()["urls"]["get"], headers)
+    if not image_url:
+        return False
+
+    img_data = requests.get(image_url).content
+    with open(output_path, "wb") as f:
+        f.write(img_data)
+    print(f"Imagen mejorada: {output_path}")
+    return True
+
+def aplicar_arte_digital(input_path, output_path):
+    with open(input_path, "rb") as f:
+        b64_img = base64.b64encode(f.read()).decode("utf-8")
+
+    headers = {
+        "Authorization": f"Token {REPLICATE_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "version": "cf5d0e0b13c1623cecbba95b7eea55a22752e89de7b1cf08c65c568675c0112e",  # model estilo retrato (portrait)
         "input": {
             "image": f"data:image/png;base64,{b64_img}"
         }
@@ -53,79 +104,48 @@ def ejecutar_replicate(image_path, version):
 
     response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=data)
     if response.status_code != 201:
-        print(f"Replicate error: {response.status_code} - {response.text}")
-        return None
+        print(f"Replicate arte error: {response.status_code} - {response.text}")
+        return False
 
-    prediction_url = response.json()["urls"]["get"]
+    image_url = esperar_resultado(response.json()["urls"]["get"], headers)
+    if not image_url:
+        return False
 
-    # Poll hasta que termine
-    for _ in range(20):
-        poll = requests.get(prediction_url, headers=headers)
-        result = poll.json()
-        if result["status"] == "succeeded":
-            return result["output"]
-        elif result["status"] == "failed":
-            print("Replicate falló.")
-            return None
-        time.sleep(3)
-
-    print("Replicate se tardó demasiado.")
-    return None
-
-def descargar_imagen(url, output_path):
-    img_data = requests.get(url).content
+    img_data = requests.get(image_url).content
     with open(output_path, "wb") as f:
         f.write(img_data)
+    print(f"Arte digital aplicado: {output_path}")
+    return True
+
+# === Proceso ===
 
 for filename in os.listdir(INPUT_FOLDER):
     name, ext = os.path.splitext(filename)
     ext = ext.lower()
-    if ext not in [".jpg", ".jpeg", ".png", ".avif"]:
+
+    if ext not in [".png", ".jpg", ".jpeg", ".avif"]:
         continue
 
     input_path = os.path.join(INPUT_FOLDER, filename)
+    converted_path = os.path.join(OUTPUT_FOLDER, f"{name}-converted.png") if ext == ".avif" else input_path
+    nobg_path = os.path.join(OUTPUT_FOLDER, f"{name}-nobg.png")
+    upscaled_path = os.path.join(OUTPUT_FOLDER, f"{name}-upscaled.png")
+    final_output = os.path.join(OUTPUT_FOLDER, f"{name}-portrait.png")
 
-    # 1. Convertir AVIF a PNG si aplica
-    if ext == ".avif":
-        converted_path = os.path.join(OUTPUT_FOLDER, f"{name}-converted.png")
-        if convertir_avif_a_png(input_path, converted_path):
-            input_path = converted_path
-        else:
-            continue
-
-    temp_nobg_path = os.path.join(OUTPUT_FOLDER, f"{name}-nobg.png")
-    upscale_path = os.path.join(OUTPUT_FOLDER, f"{name}-upscaled.png")
-    portrait_path = os.path.join(OUTPUT_FOLDER, f"{name}-portrait.png")
-
-    if os.path.exists(portrait_path):
-        print(f"Ya procesada: {portrait_path}")
+    if os.path.exists(final_output):
+        print(f"Ya procesada: {final_output}")
         continue
 
     print(f"Procesando {filename}...")
 
-    # 2. Quitar fondo
-    if not os.path.exists(temp_nobg_path):
-        if not quitar_fondo(input_path, temp_nobg_path):
-            continue
+    # Convertir AVIF a PNG
+    if ext == ".avif" and not convertir_avif_a_png(input_path, converted_path):
+        continue
 
-    # 3. Upscale
-    if not os.path.exists(upscale_path):
-        output_url = ejecutar_replicate(
-            temp_nobg_path,
-            version="6a9f6d70a6c5a1e6917a19d3fe42b15d2b52f239154a3fc49ccde0d70c2cfc3c"  # Real-ESRGAN
-        )
-        if not output_url:
-            continue
-        descargar_imagen(output_url, upscale_path)
+    if not quitar_fondo(converted_path, nobg_path):
+        continue
 
-    # 4. Estilo artístico tipo retrato
-    if not os.path.exists(portrait_path):
-        output_url = ejecutar_replicate(
-            upscale_path,
-            version="2a1e7618e50fa826f63e07fa9fe4081337645b358fcf10ef83510f0cd38af50b"  # portrait-v1.0.1
-        )
-        if not output_url:
-            continue
-        descargar_imagen(output_url, portrait_path)
+    if not upscale_imagen(nobg_path, upscaled_path):
+        continue
 
-    print(f"✓ Imagen final guardada: {portrait_path}")
+    aplicar_arte_digital(upscaled_path, final_output)
