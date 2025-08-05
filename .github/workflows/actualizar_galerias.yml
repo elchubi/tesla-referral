@@ -2,7 +2,7 @@ name: Actualizar galerías Tesla
 
 on:
   schedule:
-    - cron: '0 6 1 */3 *'  # Cada 3 meses, el día 1 a las 06:00 UTC
+    - cron: '0 6 1 */3 *'  # Cada 3 meses: enero, abril, julio, octubre
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: 📁 Clonar repositorio
         uses: actions/checkout@v3
+        with:
+          persist-credentials: true  # importante para git push
 
       - name: 🐍 Configurar Python
         uses: actions/setup-python@v4
@@ -22,12 +24,28 @@ jobs:
         run: |
           pip install requests
 
-      - name: 📥 Ejecutar script de actualización
+      - name: 🧠 Ejecutar script de actualización
         run: |
           mkdir -p cache assets
           python scripts/actualizar_galerias.py
 
-      - name: 📤 Subir imágenes nuevas como artefacto
+      - name: 📌 Commit y push de imágenes nuevas
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Verifica si hay cambios en /assets/
+          if [ -n "$(git status --porcelain assets/)" ]; then
+            echo "📦 Se detectaron imágenes nuevas. Haciendo commit..."
+            git add assets/
+            git commit -m "🔄 Agregar nuevas imágenes de galerías Tesla [auto]"
+            git push origin main
+          else
+            echo "✅ Sin cambios en /assets/, no se hace commit."
+          fi
+
+      - name: 📤 Subir imágenes como artefacto
         if: always()
         uses: actions/upload-artifact@v4
         with:
