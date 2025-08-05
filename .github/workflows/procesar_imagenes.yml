@@ -1,35 +1,38 @@
 name: Procesar imágenes Tesla
 
 on:
-  schedule:
-    - cron: '0 3 1 * *'  # Ejecutar el día 1 de cada mes a las 3am UTC
   workflow_dispatch:
+  schedule:
+    - cron: '0 6 1 * *'  # Ejecuta el día 1 de cada mes a las 6:00 UTC
 
 jobs:
-  procesar:
+  procesar-imagenes:
     runs-on: ubuntu-latest
-    env:
-      REMOVE_BG_API_KEY: ${{ secrets.REMOVE_BG_API_KEY }}
-      REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+
     steps:
-      - name: Clonar repo
-        uses: actions/checkout@v3
+    - name: Checkout repositorio
+      uses: actions/checkout@v3
 
-      - name: Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
 
-      - name: Instalar dependencias
-        run: pip install requests
+    - name: Instalar dependencias
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libavif-bin
+        pip install requests Pillow
 
-      - name: Ejecutar procesamiento de imágenes
-        run: python scripts/procesar_imagenes.py
+    - name: Ejecutar script de procesamiento
+      env:
+        REMOVE_BG_API_KEY: ${{ secrets.REMOVE_BG_API_KEY }}
+        REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+      run: python scripts/procesar_imagenes.py
 
-      - name: Commit cambios procesados
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add assets-editados/*
-          git commit -m "Imágenes Tesla procesadas automáticamente"
-          git push
+    - name: Commit cambios procesados
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@users.noreply.github.com"
+        git add assets-editados/* || true
+        git diff --cached --quiet || (git commit -m "Imágenes Tesla procesadas automáticamente" && git push)
