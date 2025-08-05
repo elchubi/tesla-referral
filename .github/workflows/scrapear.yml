@@ -20,7 +20,7 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install requests-html
+          pip install requests-html lxml_html_clean
 
       - name: Ejecutar scraping
         run: python scripts/scrapear_tesla.py
