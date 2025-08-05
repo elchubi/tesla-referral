@@ -1,64 +1,72 @@
-import os
-import time
-from pathlib import Path
-from urllib.parse import urljoin
-from requests_html import HTMLSession
+# scripts/scrapear_tesla.py
 
-BASE_URLS = [
+import os
+import re
+import requests
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+
+URLS = [
     "https://www.tesla.com/model3",
     "https://www.tesla.com/modely",
-    "https://www.tesla.com/modelx",
     "https://www.tesla.com/models",
-    "https://www.tesla.com/cybertruck"
+    "https://www.tesla.com/modelx",
+    "https://www.tesla.com/cybertruck",
 ]
 
-OUTPUT_FOLDER = "assets"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+OUTPUT_DIR = "assets"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-session = HTMLSession()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept-Language": "en-US,en;q=0.9"
-})
-
-def es_url_valida(url):
-    ext = url.split("?")[0].split(".")[-1].lower()
-    return ext in ["jpg", "jpeg", "png", "webp", "avif"]
-
-def contiene_hero(url):
-    return "hero" in url.lower()
-
-def descargar_imagen(url, nombre):
+def descargar_imagen(url, nombre_archivo):
     try:
-        r = session.get(url)
+        r = requests.get(url, stream=True)
         r.raise_for_status()
-        ruta = os.path.join(OUTPUT_FOLDER, nombre)
-        with open(ruta, "wb") as f:
-            f.write(r.content)
-        print(f"✅ Guardada: {ruta}")
+        with open(nombre_archivo, "wb") as f:
+            for chunk in r.iter_content(1024):
+                f.write(chunk)
+        print(f"✅ Imagen guardada: {nombre_archivo}")
     except Exception as e:
         print(f"❌ Error al descargar {url}: {e}")
 
-def procesar_pagina(url_base):
-    print(f"\n🌐 Accediendo a {url_base}")
-    try:
-        r = session.get(url_base)
-        r.html.render(timeout=20, sleep=2)
-        imgs = r.html.find("img")
+def extraer_imagenes_con_hero(html):
+    soup = BeautifulSoup(html, "html.parser")
+    imagenes = set()
 
-        for img in imgs:
-            src = img.attrs.get("src")
-            if not src:
+    # Buscar todos los tags que podrían tener imágenes
+    for tag in soup.find_all(["img", "source"]):
+        url = tag.get("src") or tag.get("srcset")
+        if url and "hero" in url.lower():
+            # Si srcset tiene múltiples entradas, separar
+            if "," in url:
+                for part in url.split(","):
+                    clean_url = part.strip().split(" ")[0]
+                    if "hero" in clean_url.lower():
+                        imagenes.add(clean_url)
+            else:
+                imagenes.add(url)
+    return imagenes
+
+with sync_playwright() as p:
+    browser = p.chromium.launch()
+    page = browser.new_page()
+
+    for url in URLS:
+        print(f"🌐 Accediendo a {url}")
+        try:
+            page.goto(url, timeout=60000)
+            page.wait_for_timeout(5000)  # esperar 5 segundos
+            html = page.content()
+            imagenes = extraer_imagenes_con_hero(html)
+
+            if not imagenes:
+                print("⚠️  No se encontraron imágenes con 'hero'")
                 continue
-            full_url = urljoin(url_base, src)
-            if contiene_hero(full_url) and es_url_valida(full_url):
-                nombre = Path(full_url).name.split("?")[0]
-                descargar_imagen(full_url, nombre)
 
-        time.sleep(2)
-    except Exception as e:
-        print(f"❌ Error al obtener {url_base}: {e}")
+            for img_url in imagenes:
+                nombre = img_url.split("/")[-1]
+                path = os.path.join(OUTPUT_DIR, nombre)
+                descargar_imagen(img_url, path)
+        except Exception as e:
+            print(f"❌ Error al obtener {url}: {e}")
 
-# === Ejecutar ===
-for url in BASE_URLS:
-    procesar_pagina(url)
+    browser.close()
