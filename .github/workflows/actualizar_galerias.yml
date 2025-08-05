@@ -1,0 +1,35 @@
+name: Actualizar galerías Tesla
+
+on:
+  schedule:
+    - cron: '0 6 1 */3 *'  # Cada 3 meses, el día 1 a las 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  actualizar-galerias:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: 📁 Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Instalar dependencias
+        run: |
+          pip install requests
+
+      - name: 📥 Ejecutar script de actualización
+        run: |
+          mkdir -p cache assets
+          python scripts/actualizar_galerias.py
+
+      - name: 📤 Subir imágenes nuevas como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagenes-nuevas
+          path: assets/
