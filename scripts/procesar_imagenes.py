@@ -47,7 +47,7 @@ def upscale_imagen(input_path, output_path):
         "Content-Type": "application/json"
     }
     data = {
-        "version": "9280fe26d34fa4f8c85593b8e4b9ba83de5f1c33e665947cecc17d3c3c47f8c2",
+        "version": "fbb9ac7c439feeb5c779e3f6c6ab527968d5baf2e25c18a58519c0c1792560a3",
         "input": {
             "image": f"data:image/png;base64,{b64_img}"
         }
