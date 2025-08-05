@@ -5,7 +5,7 @@ const images = [
   '/assets/tesla2.jpg',
   '/assets/tesla3.jpg',
   '/assets/tesla4.jpg',
-  // Agrega aquí más imágenes si existen en assets
+  // Agrega más si existen
 ];
 
 export default function Home() {
@@ -17,8 +17,8 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-center px-4">
-      <div className="max-w-4xl w-full bg-white shadow-2xl rounded-2xl overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center px-4">
+      <div className="max-w-4xl w-full bg-white rounded-2xl shadow-lg overflow-hidden">
         <img src={image} alt="Tesla" className="w-full h-80 object-cover" />
         <div className="p-8">
           <h1 className="text-4xl font-bold text-red-600 mb-4">
@@ -31,12 +31,12 @@ export default function Home() {
             href="https://ts.la/davidanton806840"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block px-8 py-4 bg-red-500 hover:bg-red-600 text-white font-semibold text-lg rounded-full shadow-md transition-all duration-300"
+            className="inline-block bg-red-500 hover:bg-red-600 text-white font-semibold px-6 py-3 rounded-xl transition"
           >
             Ir al sitio de Tesla
           </a>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
